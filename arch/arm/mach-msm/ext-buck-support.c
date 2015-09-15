@@ -98,8 +98,8 @@ static int msm_ext_buck_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static struct of_device_id msm_ext_buck_table[] = {
-	{.compatible = "qcom,ext-buck-support"},
+static struct of_device_id msm_ext_buck_table[] __initdata = {
+	{.compatible = "qcom,ext-buck-control"},
 	{},
 };
 
