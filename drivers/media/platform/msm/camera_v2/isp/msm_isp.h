@@ -59,6 +59,8 @@ enum msm_isp_camif_update_state {
 struct msm_isp_timestamp {
 	/*Monotonic clock for v4l2 buffer*/
 	struct timeval buf_time;
+	/*Monotonic clock for VT */
+	struct timeval vt_time;
 	/*Wall clock for userspace event*/
 	struct timeval event_time;
 };
@@ -252,7 +254,6 @@ struct msm_vfe_axi_stream {
 	uint32_t stream_handle;
 	uint8_t buf_divert;
 	enum msm_vfe_axi_stream_type stream_type;
-
 	uint32_t frame_based;
 	uint32_t framedrop_period;
 	uint32_t framedrop_pattern;

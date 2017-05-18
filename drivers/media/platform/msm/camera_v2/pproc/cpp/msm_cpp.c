@@ -162,7 +162,8 @@ static struct msm_cam_clk_info cpp_clk_info[] = {
 	{"cpp_bus_clk", -1},
 	{"micro_iface_clk", -1},
 };
-static int msm_cpp_notify_frame_done(struct cpp_device *cpp_dev);
+static int msm_cpp_notify_frame_done(struct cpp_device *cpp_dev,
+	uint32_t buff_mgr_ops, uint8_t put_buf);
 static void cpp_load_fw(struct cpp_device *cpp_dev, char *fw_name_bin);
 void cpp_timer_callback(unsigned long data);
 
@@ -630,7 +631,8 @@ void msm_cpp_do_tasklet(unsigned long data)
 					cpp_timers[del_timer_idx].data.processed_frame = NULL;
 					del_timer_idx = 1 - del_timer_idx;
 					cpp_dev->timeout_trial_cnt = 0;
-					msm_cpp_notify_frame_done(cpp_dev);
+					msm_cpp_notify_frame_done(cpp_dev,
+						VIDIOC_MSM_BUF_MNGR_BUF_DONE, 0);
 				} else if (msg_id ==
 					MSM_CPP_MSG_ID_FRAME_NACK) {
 					pr_err("NACK error from hw!!\n");
@@ -640,7 +642,8 @@ void msm_cpp_do_tasklet(unsigned long data)
 					cpp_timers[del_timer_idx].data.processed_frame = NULL;
 					del_timer_idx = 1 - del_timer_idx;
 					cpp_dev->timeout_trial_cnt = 0;
-					msm_cpp_notify_frame_done(cpp_dev);
+					msm_cpp_notify_frame_done(cpp_dev,
+						VIDIOC_MSM_BUF_MNGR_PUT_BUF, 0);
 				}
 				i += cmd_len + 2;
 			}
@@ -1109,7 +1112,8 @@ static int msm_cpp_buffer_ops(struct cpp_device *cpp_dev,
 	return rc;
 }
 
-static int msm_cpp_notify_frame_done(struct cpp_device *cpp_dev)
+static int msm_cpp_notify_frame_done(struct cpp_device *cpp_dev,
+	uint32_t buff_mgr_ops, uint8_t put_buf)
 {
 	struct v4l2_event v4l2_evt;
 	struct msm_queue_cmd *frame_qcmd;
@@ -1144,12 +1148,22 @@ static int msm_cpp_notify_frame_done(struct cpp_device *cpp_dev)
 			buff_mgr_info.timestamp = processed_frame->timestamp;
 			buff_mgr_info.index =
 				processed_frame->output_buffer_info[0].index;
-			rc = msm_cpp_buffer_ops(cpp_dev,
-				VIDIOC_MSM_BUF_MNGR_BUF_DONE,
-				&buff_mgr_info);
-			if (rc < 0) {
-				pr_err("error putting buffer\n");
-				rc = -EINVAL;
+			if (put_buf) {
+				rc = msm_cpp_buffer_ops(cpp_dev,
+					buff_mgr_ops,
+					&buff_mgr_info);
+				if (rc < 0) {
+					pr_err("error putting buffer\n");
+					rc = -EINVAL;
+				}
+			} else {
+				rc = msm_cpp_buffer_ops(cpp_dev,
+					buff_mgr_ops,
+					&buff_mgr_info);
+				if (rc < 0) {
+					pr_err("error putting buffer\n");
+					rc = -EINVAL;
+				}
 			}
 		}
 
@@ -1165,12 +1179,22 @@ static int msm_cpp_notify_frame_done(struct cpp_device *cpp_dev)
 				buff_mgr_info.timestamp = processed_frame->timestamp;
 				buff_mgr_info.index =
 					processed_frame->output_buffer_info[1].index;
-			rc = msm_cpp_buffer_ops(cpp_dev,
-				VIDIOC_MSM_BUF_MNGR_BUF_DONE,
-				&buff_mgr_info);
-			if (rc < 0) {
-				pr_err("error putting buffer\n");
-				rc = -EINVAL;
+			if (put_buf) {
+				rc = msm_cpp_buffer_ops(cpp_dev,
+					buff_mgr_ops,
+					&buff_mgr_info);
+				if (rc < 0) {
+					pr_err("error putting buffer\n");
+					rc = -EINVAL;
+				}
+			} else {
+				rc = msm_cpp_buffer_ops(cpp_dev,
+					buff_mgr_ops,
+					&buff_mgr_info);
+				if (rc < 0) {
+					pr_err("error putting buffer\n");
+					rc = -EINVAL;
+				}
 			}
                   }
 		}
@@ -1550,6 +1574,13 @@ long msm_cpp_subdev_ioctl(struct v4l2_subdev *sd,
 		pr_err("cpp_dev is null\n");
 		return -EINVAL;
 	}
+
+	if ((ioctl_ptr->ioctl_ptr == NULL) || (ioctl_ptr->len == 0)) {
+		pr_err("ioctl_ptr OR ioctl_ptr->len is NULL  %p %d\n",
+			ioctl_ptr, ioctl_ptr->len);
+		return -EINVAL;
+	}
+
 	mutex_lock(&cpp_dev->mutex);
 	CPP_DBG("E cmd: %d\n", cmd);
 	switch (cmd) {
@@ -1576,9 +1607,9 @@ long msm_cpp_subdev_ioctl(struct v4l2_subdev *sd,
 				kfree(cpp_dev->fw_name_bin);
 				cpp_dev->fw_name_bin = NULL;
 			}
-
-			if (ioctl_ptr->len == 0) {
-				pr_err("ioctl_ptr->len is 0\n");
+			if (ioctl_ptr->len >= MSM_CPP_MAX_FW_NAME_LEN) {
+				pr_err("Error: ioctl_ptr->len = %d\n",
+					 ioctl_ptr->len);
 				mutex_unlock(&cpp_dev->mutex);
 				return -EINVAL;
 			}
@@ -1832,9 +1863,28 @@ long msm_cpp_subdev_ioctl(struct v4l2_subdev *sd,
 		struct msm_device_queue *queue = &cpp_dev->eventData_q;
 		struct msm_queue_cmd *event_qcmd;
 		struct msm_cpp_frame_info_t *process_frame;
+
+		CPP_DBG("VIDIOC_MSM_CPP_GET_EVENTPAYLOAD\n");
 		event_qcmd = msm_dequeue(queue, list_eventdata);
+		if (!event_qcmd) {
+			pr_err("no queue cmd available");
+			mutex_unlock(&cpp_dev->mutex);
+			return -EINVAL;
+		}
 		process_frame = event_qcmd->command;
 		CPP_DBG("fid %d\n", process_frame->frame_id);
+		if (copy_to_user((void __user *)ioctl_ptr->ioctl_ptr,
+					process_frame,
+					sizeof(struct msm_cpp_frame_info_t))) {
+						mutex_unlock(&cpp_dev->mutex);
+						kfree(process_frame->cpp_cmd_msg);
+						process_frame->cpp_cmd_msg = NULL;
+						kfree(process_frame);
+						process_frame = NULL;
+						kfree(event_qcmd);
+						event_qcmd = NULL;
+						return -EINVAL;
+			}
 
 		if (ioctl_ptr->ioctl_ptr == NULL) {
 			pr_err("ioctl_ptr->ioctl_ptr is NULL\n");

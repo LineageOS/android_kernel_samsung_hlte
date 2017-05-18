@@ -514,8 +514,14 @@ int msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void __user *argp)
 			break;
 		}
 
-		if (conf_array.data_type == MSM_CAMERA_I2C_BURST_DATA) {
+		if ((!conf_array.size) ||
+			(conf_array.size > I2C_USER_REG_DATA_MAX )) {
+			pr_err("%s:%d failed\n", __func__, __LINE__);
+			rc = -EFAULT;
+			break;
+		}
 
+		if (conf_array.data_type == MSM_CAMERA_I2C_BURST_DATA) {
 			burst_reg_setting = (void *)kzalloc(conf_array.size *
 				(sizeof(struct msm_camera_i2c_burst_reg_array)), GFP_KERNEL);
 			if (!burst_reg_setting) {
@@ -660,6 +666,12 @@ int msm_sensor_config(struct msm_sensor_ctrl_t *s_ctrl, void __user *argp)
 			break;
 		}
 
+		if ((!conf_array.size) ||
+			(conf_array.size > I2C_USER_REG_DATA_MAX )) {
+			pr_err("%s:%d failed\n", __func__, __LINE__);
+			rc = -EFAULT;
+			break;
+		}
 		reg_setting = kzalloc(conf_array.size *
 			(sizeof(struct msm_camera_i2c_seq_reg_array)),
 			GFP_KERNEL);

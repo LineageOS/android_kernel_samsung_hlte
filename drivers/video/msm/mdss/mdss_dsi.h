@@ -344,6 +344,7 @@ struct mdss_dsi_ctrl_pdata {
 #if defined(CONFIG_CABC_TUNING_HX8394C)
 	int current_cabc_duty;
 #endif
+	bool dmap_iommu_map;
 	struct pwm_device *pwm_bl;
 	struct dsi_drv_cm_data shared_pdata;
 	u32 pclk_rate;
